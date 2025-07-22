@@ -1,0 +1,63 @@
+<!DOCTYPE html><html lang="ja"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KU-DETA シフト提出</title>
+<style>
+body{font-family:system-ui;padding:24px}label{display:block;margin-top:12px}
+select,input{padding:6px;border:1px solid #ccc;border-radius:6px;width:100%;max-width:280px}
+button{margin-top:16px;padding:8px 24px;border:0;border-radius:6px;background:#333;color:#fff;cursor:pointer}
+</style></head><body>
+<h2>KU-DETA シフト提出</h2>
+
+<label>シフト区分
+  <select id="type">
+    <option value="LUNCH">ランチ</option>
+    <option value="DINNER">ディナー</option>
+  </select>
+</label>
+
+<label>名前
+  <select id="name"></select>
+</label>
+
+<label>勤務希望日 (例: 1,3,5)
+  <input id="days" placeholder="半角カンマ区切り">
+</label>
+
+<button id="sendBtn">送信</button>
+<p id="msg"></p>
+
+<script>
+/* ===== CONFIG ===== */
+const ENDPOINT = 'https://script.google.com/macros/s/XXXXXXXXXXXXXXXX/exec';
+const SECRET   = 'shift2025';                       // Code.gs と同じ
+const LISTS = {
+  LUNCH: ['佐々木裕哉','久納真希','小木曽公亮','園田響','古野御音','佐野真央','塚本千紘','佐々木蒼空','辻華穂','山本百葉','中村夏子','長屋和磨','益田瑞基','山田彩乃','岡安梨沙','佐々木美紅'],
+  DINNER:['佐々木裕哉','久納真希','小木曽公亮','園田響','古野御音','佐野真央','佐々木蒼空','辻華穂','山本百葉','長屋和磨','益田瑞基','山田彩乃','岡安梨沙']
+};
+/* ===== UI ====== */
+const typeSel=document.getElementById('type'), nameSel=document.getElementById('name');
+function populate(){nameSel.innerHTML='';LISTS[typeSel.value].forEach(n=>{const o=document.createElement('option');o.value=o.text=n;nameSel.appendChild(o);});}
+typeSel.onchange=populate; populate();
+/* ===== SEND ===== */
+document.getElementById('sendBtn').onclick=async ()=>{
+  const data={
+    name: nameSel.value,
+    shiftType: typeSel.value,
+    days: document.getElementById('days').value.split(',').map(s=>Number(s.trim())).filter(Boolean)
+  };
+  if(!data.name||!data.days.length){alert('入力不足');return;}
+  document.getElementById('msg').textContent='送信中…';
+  try{
+    const res = await fetch(ENDPOINT,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({key:SECRET, data})
+    });
+    const txt = await res.text();
+    document.getElementById('msg').textContent = txt==='OK' ? '送信しました ✔︎' : 'エラー:'+txt;
+    if(txt==='OK') document.getElementById('days').value='';
+  }catch(e){
+    document.getElementById('msg').textContent='通信エラー';
+  }
+};
+</script></body></html>
