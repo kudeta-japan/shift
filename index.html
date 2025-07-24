@@ -5,17 +5,28 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>KU-DETA シフト提出</title>
   <style>
-    body{font-family:system-ui;padding:2rem;line-height:1.6;}
-    h2{margin-bottom:1.2rem;}
-    label{display:block;margin-top:1rem;}
-    select,input{padding:.6rem;border:1px solid #ccc;border-radius:6px;width:100%;max-width:320px;}
-    button{margin-top:1.5rem;padding:.7rem 2rem;border:none;border-radius:6px;background:#333;color:#fff;cursor:pointer;font-size:1rem;}
-    button:disabled{opacity:.6;cursor:not-allowed;}
-    #msg{margin-top:1.2rem;font-weight:bold;}
+    body{font-family:system-ui;padding:24px}
+    label{display:block;margin-top:12px;font-weight:500}
+    select,input,textarea{padding:6px;border:1px solid #ccc;border-radius:6px;width:100%;max-width:320px}
+    table{border-collapse:collapse;margin-top:12px}
+    td{border:1px solid #ddd;padding:2px;text-align:center;font-size:.8rem}
+    button{margin-top:16px;padding:8px 24px;border:0;border-radius:6px;background:#333;color:#fff;cursor:pointer}
+    #msg{margin-top:14px;font-weight:bold}
   </style>
 </head>
 <body>
   <h2>KU-DETA シフト提出</h2>
+
+  <label>対象年月
+    <select id="ym"></select>
+  </label>
+
+  <label>半月区分
+    <select id="half">
+      <option value="前半">1〜15日</option>
+      <option value="後半">16〜月末</option>
+    </select>
+  </label>
 
   <label>シフト区分
     <select id="shiftType">
@@ -28,75 +39,129 @@
     <select id="name"></select>
   </label>
 
-  <label>勤務希望日 (例: 1,3,5)
-    <input id="days" placeholder="半角カンマ区切り">
+  <table id="dayTable"></table>
+
+  <label>備考
+    <textarea id="memo" rows="3" placeholder="連絡事項があれば入力"></textarea>
   </label>
 
   <button id="sendBtn">送信</button>
   <p id="msg"></p>
 
-<script>
-/* ======= 設定 ======= */
-const ENDPOINT = 'hhttps://script.google.com/macros/s/AKfycbygPABXDHIPT0HszOewnDlkThAGJkcONaaglK4U7oDwYpnpLuSwJoqrUe2qK_pBu33zmw/exec'; // ← /exec URL に置換
-const SECRET   = 'shift2025';                                               // ← Code.gs と同じキー
+  <script>
+    /* ===== 共通設定 ===== */
+    const SECRET = 'shift2025';    // Code.gs と合わせる
 
-/* ======= スタッフ一覧 ======= */
-const STAFF = {
-  LUNCH: ['佐々木裕哉','久納真希','小木曽公亮','園田響','古野御音','佐野真央','塚本千紘','佐々木蒼空','辻華穂','山本百葉','中村夏子','長屋和磨','益田瑞基','山田彩乃','岡安梨沙','佐々木美紅'],
-  DINNER:['佐々木裕哉','久納真希','小木曽公亮','園田響','古野御音','佐野真央','佐々木蒼空','辻華穂','山本百葉','長屋和磨','益田瑞基','山田彩乃','岡安梨沙']
-};
+    /* ===== 年月プルダウン生成 ===== */
+    (function genYM(){
+      const sel = document.getElementById('ym');
+      const start = new Date(2025,7,1); // 2025-08
+      for(let i=0;i<24;i++){
+        const d = new Date(start.getFullYear(), start.getMonth()+i, 1);
+        const y = d.getFullYear(), m = ('0'+(d.getMonth()+1)).slice(-2);
+        const o = document.createElement('option');
+        o.value = `${y}-${m}`; o.textContent = `${y}年${m}月`;
+        sel.appendChild(o);
+      }
+    })();
 
-/* ======= UI 初期化 ======= */
-const typeSel = document.getElementById('shiftType');
-const nameSel = document.getElementById('name');
-const daysInp = document.getElementById('days');
-const msgElm  = document.getElementById('msg');
-const btn     = document.getElementById('sendBtn');
-
-function populateNames(){
-  nameSel.innerHTML = '';
-  STAFF[typeSel.value].forEach(n=>{
-    const opt = document.createElement('option');
-    opt.value = opt.textContent = n;
-    nameSel.appendChild(opt);
-  });
-}
-typeSel.onchange = populateNames;
-populateNames();
-
-/* ======= 送信処理 ======= */
-btn.onclick = async ()=>{
-  const data = {
-    name      : nameSel.value,
-    shiftType : typeSel.value,
-    days      : daysInp.value.split(',').map(s=>Number(s.trim())).filter(Boolean)
-  };
-  if(!data.name || data.days.length === 0){
-    alert('名前と勤務希望日を入力してください');return;
-  }
-
-  btn.disabled = true;
-  msgElm.textContent = '送信中…';
-
-  try{
-    const res  = await fetch(ENDPOINT,{
-      method : 'POST',
-      headers: {'Content-Type':'text/plain'},      // ここ重要
-      body   : JSON.stringify({key: SECRET, data})
-    });
-    const text = await res.text();
-    if(res.ok && text === 'OK'){
-      msgElm.textContent = '送信しました ✔︎';
-      daysInp.value = '';
-    }else{
-      msgElm.textContent = 'エラー: ' + text;
+    /* ===== スタッフ名プルダウン ===== */
+    function loadNames(){
+      const type = document.getElementById('shiftType').value;
+      google.script.run.withSuccessHandler(list=>{
+        const sel = document.getElementById('name');
+        sel.innerHTML = '';
+        list.forEach(n=>{
+          const o = document.createElement('option');
+          o.value = o.textContent = n;
+          sel.appendChild(o);
+        });
+        renderTable(); // 区分変更でテーブル再生成
+      }).getStaffNames(type);
     }
-  }catch(err){
-    msgElm.textContent = '通信エラー';
-  }finally{
-    btn.disabled = false;
-  }
-};
-</script>
+    document.getElementById('shiftType').onchange = loadNames;
+    loadNames();
+
+    /* ===== 許可時刻リスト（30分刻み・区分別） ===== */
+    function getAllowedTimes(){
+      const type = document.getElementById('shiftType').value;
+      const list = ['','◯'];
+      const [s,e] = type === 'LUNCH' ? [9,15] : [17,23];
+      for(let h=s; h<=e; h++){
+        list.push(`${('0'+h).slice(-2)}:00`);
+        if(h !== e) list.push(`${('0'+h).slice(-2)}:30`);
+      }
+      return list;
+    }
+
+    /* ===== 日付テーブル生成 ===== */
+    const tbl = document.getElementById('dayTable');
+    function renderTable(){
+      const half = document.getElementById('half').value;
+      const start = half==='前半'?1:16;
+      const days  = half==='前半'?15:16;
+      const times = getAllowedTimes();
+      let html = '<tr>';
+      for(let i=0;i<days;i++){
+        if(i%5===0 && i!==0) html += '</tr><tr>';
+        const d = start + i;
+        html += `<td>${d}<br><select id="day${d}">`;
+        times.forEach(t=> html += `<option value="${t}">${t}</option>`);
+        html += `</select></td>`;
+      }
+      tbl.innerHTML = html + '</tr>';
+    }
+    document.getElementById('half').onchange = renderTable;
+    renderTable();
+
+    /* ===== 送信処理 ===== */
+    document.getElementById('sendBtn').onclick = () => {
+      const msg = document.getElementById('msg');
+      const [y,m] = document.getElementById('ym').value.split('-').map(Number);
+      const half   = document.getElementById('half').value;
+      const name   = document.getElementById('name').value;
+      const shift  = document.getElementById('shiftType').value;
+      if(!name){
+        alert('名前を選択してください');
+        return;
+      }
+
+      const avail = {};
+      const start = half==='前半'?1:16;
+      const days  = half==='前半'?15:16;
+      for(let i=0;i<days;i++){
+        const d = start + i;
+        const val = document.getElementById('day'+d).value;
+        if(val) avail[d] = val;
+      }
+      if(Object.keys(avail).length===0){
+        alert('少なくとも1日選択してください');
+        return;
+      }
+
+      const payload = {
+        year: y, month: m, half: half,
+        name: name, shiftType: shift,
+        avail: avail, memo: document.getElementById('memo').value
+      };
+
+      msg.textContent = '送信中…';
+      google.script.run
+        .withSuccessHandler(t=>{
+          msg.textContent = t;
+          if(t.startsWith('登録')) clearInputs();
+        })
+        .withFailureHandler(e=>{
+          msg.textContent = 'エラー:' + e.message;
+          console.error(e);
+        })
+        .submitShift(payload, SECRET);
+    };
+
+    function clearInputs(){
+      Array.from(document.querySelectorAll('#dayTable select')).forEach(sel=>sel.value='');
+      document.getElementById('memo').value = '';
+    }
+  </script>
 </body>
 </html>
